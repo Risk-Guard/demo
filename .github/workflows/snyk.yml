@@ -1,0 +1,37 @@
+name: Snyk
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write   # upload SARIF to the Security tab
+
+jobs:
+  snyk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run Snyk to check for vulnerabilities
+        id: snyk
+        uses: snyk/actions/node@master
+        continue-on-error: true   # don't fail yet — upload SARIF first, then gate below
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --sarif-file-output=snyk.sarif
+
+      - name: Upload result to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk.sarif
+
+      - name: Fail the build on high-severity findings
+        if: steps.snyk.outcome == 'failure'
+        run: |
+          echo "Snyk found high-severity (or worse) vulnerabilities — blocking merge."
+          exit 1
